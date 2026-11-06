@@ -1,0 +1,44 @@
+{
+  "_comment": "Canonical trust anchors for the Kanonik Auditor Export verifier. The verifier verifies the chain-root/checkpoint SIGNATURE against these public keys, selected by matching signature, NEVER against the key the bundle ships. Entries are distinguished by the public key (sha256_spki_der), not the id. env=production -> attested (PASS); env=dev -> verified but DEGRADED (not production-attested); a signature matching no entry FAILs. Public keys only. Schema v2: every key has a status (active, retired, revoked; a missing status is active; a status this verifier does not know is read as revoked). A revoked key fails every signature it made; a retired key still verifies what it signed while active. The copy published at the well-known address is a v2 file signed by a pinned production key (continuity: signed_by, signed_at, signature over the canonical JSON of the whole file without continuity.signature); the verifier takes an online file only on a valid continuity signature, otherwise it takes nothing from it (a v1 or unsigned file adds nothing; revoked keys are listed under revoked_keys, never in keys; a file signed before min_key_file_signed_at is refused). This shipped file is pinned by distribution (diff it against kanonik-verify) and carries no continuity block. Updated on rotation and published at https://kanonik.ai/.well-known/kanonik-chain-root-keys.json. seal_required_from (optional RFC 3339 instant): a package whose chain root verifies under this key and was signed at or after the instant must carry a v3 root and a package seal (ADR-0052 Amendment 17). Set for the production key from 2026-11-01 (after the v0.1.72 roll-out; a v0.1.71 export must never read Failed, #3396), for the integration key from 2026-10-22 (the first day every int pod signs v3 roots, Q-436), and for the sample key from the start of the year, so no older sample root can stand in for a current one. class=sample always DEGRADED: synthetic data, never customer attestation, even if env is production.",
+  "schema": "kanonik-chain-root-keys/v2",
+  "min_key_file_signed_at": "2026-10-24T00:00:00Z",
+  "revoked_keys": [],
+  "keys": [
+    {
+      "signing_key_id": "chain-root:v1@vault",
+      "env": "production",
+      "sha256_spki_der": "4037e409f864b8149b9f5d021122e1fd2bea3bbec1504a1e2716ba1411c5df1d",
+      "seal_required_from": "2026-11-01T00:00:00Z",
+      "pem": "-----BEGIN PUBLIC KEY-----\nMHYwEAYHKoZIzj0CAQYFK4EEACIDYgAEaoCdQeFBb/tAPcfs54JU/VxMzbA05ua5\noSBkuvKnl5wS5GPqIpekksoA/ZmU28E7tAmwjKpI+zpDtIN+ET+rjIM27JnRD8fr\n6d13DzGlJED1n7z0nyXWhOsYaQetPxwf\n-----END PUBLIC KEY-----\n",
+      "status": "active"
+    },
+    {
+      "signing_key_id": "chain-root:v1@vault",
+      "env": "dev",
+      "label": "integration",
+      "sha256_spki_der": "7b7dba090c3c7168d7880b95144b25e436ce01e63350e69aa164857390acbc84",
+      "seal_required_from": "2026-10-22T00:00:00Z",
+      "pem": "-----BEGIN PUBLIC KEY-----\nMHYwEAYHKoZIzj0CAQYFK4EEACIDYgAEW+lI5s8xYdwpEVZNEGa091bltFFIRImb\n65Dz/f3gSP1IUz8uagVDaaDYJZ70d/XQ82DM9VOrfGLpAoKj0/gXPX8aDHJeGqsE\nDUW3c5lvcMuIik8klFQvpo2YHyh1oK7W\n-----END PUBLIC KEY-----\n",
+      "status": "active"
+    },
+    {
+      "signing_key_id": "kanonik-public-sample-2026-10-04",
+      "class": "sample",
+      "env": "sample",
+      "label": "Kanonik public sample key - synthetic data only",
+      "sha256_spki_der": "bd2689adf99a28d57e1a0174a3bc835b772ef02b437a5a59f9fd3bbd19fe277f",
+      "seal_required_from": "2026-01-01T00:00:00Z",
+      "pem": "-----BEGIN PUBLIC KEY-----\nMHYwEAYHKoZIzj0CAQYFK4EEACIDYgAEuCibNIPNWVpJhXkG/obwIJbfood2ITdU\nuaKKdminUNxMkYqxY1bt3/3qVV7cyOXZsViP9Z5ZTUsRFm+mDVMVGIi9PlqtUPJx\n4uVrJzXw8vALKJMS1Moq7CXNQ74ZeOhs\n-----END PUBLIC KEY-----\n",
+      "status": "active"
+    }
+  ],
+  "skill_signing_keys": [
+    {
+      "signing_key_id": "sha256:068fb03acc0367e508ce0da187ccca9d37cdd11c499dc2ae2dd6a2bcda627e84",
+      "env": "production",
+      "label": "kanonik-first-party",
+      "sha256_spki_der": "068fb03acc0367e508ce0da187ccca9d37cdd11c499dc2ae2dd6a2bcda627e84",
+      "pem": "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAExjLB9vqUvtWH8eNCvUpEU5Tlwurm\n4FLNVJABg1P8X+H/4PqnMWwZCRybLPhAnsoLfPmtZ8qvH0oI+WPFMRIIig==\n-----END PUBLIC KEY-----\n"
+    }
+  ]
+}

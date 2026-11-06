@@ -1,0 +1,19 @@
+Kanonik production signing key for chain roots
+
+Algorithm:     ECDSA P-384 with SHA-384
+Key id:        chain-root:v1@vault
+SHA-256 of the public key (DER SubjectPublicKeyInfo):
+  4037e409f864b8149b9f5d021122e1fd2bea3bbec1504a1e2716ba1411c5df1d
+Checker:       version 2.7.20, from product release v0.1.76
+
+Every production Auditor Export's chain root is signed with this key. The checker in this folder pins it.
+The same key is listed at https://kanonik.ai/.well-known/kanonik-chain-root-keys.json.
+
+To check the fingerprint yourself, save the public key below as key.pem and run:
+  openssl pkey -pubin -in key.pem -outform der | sha256sum
+
+-----BEGIN PUBLIC KEY-----
+MHYwEAYHKoZIzj0CAQYFK4EEACIDYgAEaoCdQeFBb/tAPcfs54JU/VxMzbA05ua5
+oSBkuvKnl5wS5GPqIpekksoA/ZmU28E7tAmwjKpI+zpDtIN+ET+rjIM27JnRD8fr
+6d13DzGlJED1n7z0nyXWhOsYaQetPxwf
+-----END PUBLIC KEY-----

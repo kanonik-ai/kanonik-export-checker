@@ -1,0 +1,17 @@
+# Auditor Export bundle — verify.py runtime requirements
+#
+# Stdlib-only with one exception: ECDSA P-384 + SHA-384 signature
+# verification (used for the chain-root signature check) is not
+# available in Python's stdlib. We use `cryptography` (BSD-3-Clause OR
+# Apache-2.0 dual license — both on Kanonik's permissive allowlist per
+# docs/licenses/POLICY.md) and pin a minimum version (rationale below).
+#
+# If `cryptography` is unavailable in the auditor's environment, the
+# chain-root signature check DEGRADES (not FAILs); every other check
+# still runs against the stdlib.
+#
+# Pin rationale: 41.0.7 is the first version with PEP 600 wheels for
+# Python 3.8+. Newer is fine. Upper-bound left unpinned so security
+# updates from the upstream project flow through without an MR.
+
+cryptography>=41.0.7
