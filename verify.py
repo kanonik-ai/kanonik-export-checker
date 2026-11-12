@@ -295,7 +295,13 @@ SAMPLE_KEY_NOTE = "signed with the Kanonik public sample key: synthetic data, no
 # status words as the copy states them, a file over 1 MiB refused before parsing, `--online` (live feed only from
 # https://share.kanonik.ai/t/{slug}/feed.json, differences listed by item) and `--feed F --disclosure D` (is the item's
 # signed manifest digest listed in the feed). No other check changed; `--disclosure` still needs only 2.7.19.
-VERIFIER_VERSION = "2.7.20"
+# 2.7.21 (2026-11-10): words only, and a new version because the published checker files' bytes changed (founder M-309 item 7).
+# The notes under "verifier_verdict_presence" name a record kind in words ("obligation recorded") and give a plain reason
+# instead of "obligation.recorded.v1: rule - gateway anchors the rule verdict against the canonical id"; the text output
+# says once that the JSON's DEGRADED is "Passed with notes" and prints a signature that verified with notes, or could not
+# be checked here, as "not fully (read the notes below)"; verify.html also words the cards of chain_completeness,
+# two_act_oversight and member_attestation to match what each check proves. No check, no JSON field and no outcome changed.
+VERIFIER_VERSION = "2.7.21"
 # A packaging-only bump must not claim the unimplemented Amendment 7 checks.
 MAX_SUPPORTED_BUNDLE_REQUIREMENT = "2.7.4"
 
@@ -1664,75 +1670,90 @@ GATED_WRITE_OUTCOME_CHECKED = {
 }
 
 # Lifecycle policy source (lifecycle contract). Run sync_lifecycle.py after edits.
-LIFECYCLE_VERDICT_POLICY = {'audit.finding.amended.v1': {'reason': 'Replacement graded content requires its own embedded '
-                                        'verdict; a prior version cannot justify it.',
+LIFECYCLE_VERDICT_POLICY = {'audit.finding.amended.v1': {'reason': 'A replacement version carries its own grade; the grade of an '
+                                        'earlier version does not count.',
                               'stance': 'embedded'},
- 'audit.session.finalized.v1': {'reason': 'Completeness check and signed-root reference; findings '
-                                          'are graded separately.',
+ 'audit.session.finalized.v1': {'reason': 'A completeness check and a reference to the signed chain head; '
+                                          'findings are graded on their own.',
                                 'stance': 'exempt'},
- 'audit.session.state_changed.v1': {'reason': 'Session lifecycle transition; no new finding or '
-                                              'scope is graded.',
+ 'audit.session.state_changed.v1': {'reason': 'The audit session moved to a new state; nothing new in it '
+                                              'needs a grade.',
                                     'stance': 'exempt'},
- 'claim.review_needed.v1': {'reason': 'Automatic staleness marker; no new claim is sealed.',
+ 'claim.review_needed.v1': {'reason': 'An automatic mark that a claim is out of date; no new claim is '
+                                      'recorded.',
                             'stance': 'exempt'},
- 'claim.superseded.v1': {'reason': 'Pointer to a replacement; the replacement seal carries its own '
-                                   'checks.',
+ 'claim.superseded.v1': {'reason': 'It points to a replacement record; the replacement is checked on its '
+                                   'own.',
                          'stance': 'exempt'},
- 'control_test.superseded.v1': {'reason': 'Human evidence or test record replacement, like its '
-                                          'initial capture; no model grade.',
+ 'control_test.superseded.v1': {'reason': 'A person replaced an evidence or test record, as when it was '
+                                          'first captured; it needs no AI grade.',
                                 'stance': 'exempt'},
- 'evidence.superseded.v1': {'reason': 'Human evidence or test record replacement, like its initial '
-                                      'capture; no model grade.',
+ 'evidence.superseded.v1': {'reason': 'A person replaced an evidence or test record, as when it was first '
+                                      'captured; it needs no AI grade.',
                             'stance': 'exempt'},
- 'framework.licence.attested.v1': {'reason': 'Human licence attestation; no model judgment of '
-                                             'licensing rights.',
+ 'framework.licence.attested.v1': {'reason': 'A person confirmed the licence; no AI judges licensing rights.',
                                    'stance': 'exempt'},
- 'lens.applicability.decided.v1': {'reason': 'Deterministic record: gateway anchors the rule '
-                                             'verdict against the canonical id before seal; no '
-                                             'model verdict required.',
+ 'lens.applicability.decided.v1': {'reason': 'Checked by a fixed rule before it was recorded, so it needs no '
+                                             'AI grade.',
                                    'stance': 'rule'},
- 'lens.applicability.superseded.v1': {'reason': 'Pointer to a replacement; the replacement seal '
-                                                'carries its own checks.',
+ 'lens.applicability.superseded.v1': {'reason': 'It points to a replacement record; the replacement is '
+                                                'checked on its own.',
                                       'stance': 'exempt'},
- 'lens.decided.v1': {'reason': 'Deterministic record: gateway anchors the rule verdict against the '
-                               'canonical id before seal; no model verdict required.',
+ 'lens.decided.v1': {'reason': 'Checked by a fixed rule before it was recorded, so it needs no AI grade.',
                      'stance': 'rule'},
- 'lens.decision.superseded.v1': {'reason': 'Pointer to a replacement; the replacement seal carries '
-                                           'its own checks.',
+ 'lens.decision.superseded.v1': {'reason': 'It points to a replacement record; the replacement is checked on '
+                                           'its own.',
                                  'stance': 'exempt'},
- 'link.retracted.v1': {'reason': 'A person withdraws a recorded link; it asserts nothing new, '
-                          'so no model grade is taken.',
-                        'stance': 'exempt'},
- 'migration.summary.recorded.v1': {'reason': 'Deterministic record: gateway anchors the rule '
-                                             'verdict against the canonical id before seal; no '
-                                             'model verdict required.',
+ 'link.retracted.v1': {'reason': 'A person withdrew a recorded link; it states nothing new, so it needs no '
+                                 'AI grade.',
+                       'stance': 'exempt'},
+ 'migration.summary.recorded.v1': {'reason': 'Checked by a fixed rule before it was recorded, so it needs no '
+                                             'AI grade.',
                                    'stance': 'rule'},
- 'migration.summary.superseded.v1': {'reason': 'Pointer to a replacement; the replacement seal '
-                                               'carries its own checks.',
+ 'migration.summary.superseded.v1': {'reason': 'It points to a replacement record; the replacement is '
+                                               'checked on its own.',
                                      'stance': 'exempt'},
- 'obligation.recorded.v1': {'reason': 'Deterministic record: gateway anchors the rule verdict '
-                                      'against the canonical id before seal; no model verdict '
-                                      'required.',
+ 'obligation.recorded.v1': {'reason': 'Checked by a fixed rule before it was recorded, so it needs no AI '
+                                      'grade.',
                             'stance': 'rule'},
- 'policy_acknowledgement.recorded.v1': {'reason': 'Deterministic record: gateway anchors the rule verdict '
-                                                  'against the canonical id before seal; no model verdict '
-                                                  'required.',
+ 'policy_acknowledgement.recorded.v1': {'reason': 'Checked by a fixed rule before it was recorded, so it '
+                                                  'needs no AI grade.',
                                         'stance': 'rule'},
- 'obligation.superseded.v1': {'reason': 'Pointer to a replacement; the replacement seal carries '
-                                        'its own checks.',
+ 'obligation.superseded.v1': {'reason': 'It points to a replacement record; the replacement is checked on '
+                                        'its own.',
                               'stance': 'exempt'},
- 'package.created.v1': {'reason': 'Ungated derivation container; member seals carry their own '
-                                  'grades.',
+ 'package.created.v1': {'reason': 'It only groups other records; each record in the group has its own grade.',
                         'stance': 'exempt'},
- 'questionnaire_response.superseded.v1': {'reason': 'Pointer to a replacement; the replacement '
-                                                    'seal carries its own checks.',
+ 'questionnaire_response.superseded.v1': {'reason': 'It points to a replacement record; the replacement is '
+                                                    'checked on its own.',
                                           'stance': 'exempt'},
- 'soa_decision.revised.v1': {'reason': 'Replacement graded content requires its own embedded '
-                                       'verdict; a prior version cannot justify it.',
+ 'soa_decision.revised.v1': {'reason': 'A replacement version carries its own grade; the grade of an earlier '
+                                       'version does not count.',
                              'stance': 'embedded'},
- 'sod_exception.recorded.v1': {'reason': 'Disclosure of the approval decision, not a new '
-                                         'model-authored record.',
+ 'sod_exception.recorded.v1': {'reason': 'It discloses an approval decision a person made; it is not a new '
+                                         'record written by an AI.',
                                'stance': 'exempt'}}
+
+
+def _signature_words(sig_str: str) -> str:
+    """The "Signature verified" value a person reads. The JSON keeps the program word "degraded". Degraded covers a signature that
+    verified with notes AND one that could not be checked here (no cryptography library), so the line never says "yes": it says "not fully" and points at the notes."""
+    return {"degraded": "not fully (read the notes below)"}.get(sig_str, sig_str)
+
+
+def _say_json_follows() -> None:
+    """One plain line before the JSON a program reads: its DEGRADED is the "Passed with notes" above, not a second verdict."""
+    print(
+        "\nThe block below is the same result for programs. It says PASS, DEGRADED or FAIL: DEGRADED means Passed with notes.",
+        file=sys.stderr,
+    )
+
+
+def _kind_words(et: str) -> str:
+    """An event type in words a person reads ("obligation.recorded.v1" -> "obligation recorded"), for the notes."""
+    words = re.sub(r"[._]+", " ", re.sub(r"\.v\d+$", "", et))
+    # short internal names a person would not know
+    return words.replace("sod exception", "separation-of-duties exception").replace("soa decision", "statement of applicability decision")
 
 
 def _is_unclassified_gated_write(et: str, payload: dict[str, Any]) -> bool:
@@ -2080,7 +2101,7 @@ def _check_lifecycle_verdicts(events: list[dict[str, Any]], result: CheckResult)
         if policy is None:
             continue
         stance = policy["stance"]
-        result.notes.append(f"{et}: {stance} - {policy['reason']}")
+        result.notes.append(f"{_kind_words(et)}: {policy['reason']}")
         state = _verdict_field_state(payload)
         if state == "malformed":
             _fail_committed(result, "lifecycle_malformed_verdict", event,
@@ -4719,7 +4740,7 @@ def run_record_mode(path: Path, trusted_keys: Optional[list[dict[str, Any]]] = N
     by_check = {r.check: r for r in results}
     sig = by_check.get("record_checkpoint_signature")
     sig_str = "yes" if sig and sig.status == "PASS" else ("degraded" if sig and sig.status == "DEGRADED" else "no")
-    print(f"Signature verified: {sig_str}", file=sys.stderr)
+    print(f"Signature verified: {_signature_words(sig_str)}", file=sys.stderr)
     cur = by_check.get("record_currency")
     print(f"Latest version at export: {'yes' if cur and cur.status == 'PASS' else 'no'}", file=sys.stderr)
     print("", file=sys.stderr)
@@ -4739,6 +4760,7 @@ def run_record_mode(path: Path, trusted_keys: Optional[list[dict[str, Any]]] = N
         f"{summary['summary'].get('FAIL', 0)} failed)",
         file=sys.stderr,
     )
+    _say_json_follows()
     json.dump(summary, sys.stdout, indent=2, sort_keys=True)
     sys.stdout.write("\n")
     return 0 if summary["overall_status"] == "PASS" else 1
@@ -5250,6 +5272,7 @@ def run_disclosure_mode(path: Path, trusted_keys: Optional[list[dict[str, Any]]]
         for a in r.anomalies:
             print(f"        - {_clean(a.get('kind', 'anomaly'))}: {_clean(a.get('message', ''))}", file=sys.stderr)
     print(f"\nOverall: {result_word(summary['overall_status'])}", file=sys.stderr)
+    _say_json_follows()
     json.dump(summary, sys.stdout, indent=2, sort_keys=True)
     sys.stdout.write("\n")
     return 0 if summary["overall_status"] == "PASS" else 1
@@ -5834,6 +5857,7 @@ def run_feed_mode(
             ver = f" v{_clean(it['version'])}" if "version" in it else ""
             print(f"  {_clean(it['check_code'])}  {_clean(it['title'])}{ver}  [{_clean(it['access'])}; {_clean(it['record_status'])}]", file=sys.stderr)
     print(f"\nOverall: {result_word(summary['overall_status'])}", file=sys.stderr)
+    _say_json_follows()
     json.dump(summary, sys.stdout, indent=2, sort_keys=True)
     sys.stdout.write("\n")
     return 0 if summary["overall_status"] == "PASS" else 1
@@ -6175,7 +6199,7 @@ def main(argv: list[str]) -> int:
         print("Package code: not shown (the seal did not verify)", file=sys.stderr)
     print(f"Events checked: {counts['events']}", file=sys.stderr)
     print(
-        f"Signature verified: {counts['signature_verified']}",
+        f"Signature verified: {_signature_words(counts['signature_verified'])}",
         file=sys.stderr,
     )
     print(
@@ -6215,7 +6239,9 @@ def main(argv: list[str]) -> int:
         file=sys.stderr,
     )
 
-    # Machine-readable JSON on stdout.
+    # Machine-readable JSON on stdout. It spells the result PASS, DEGRADED, FAIL (programs read it); say once, in words,
+    # that DEGRADED is the "Passed with notes" above, so a person who reads the JSON does not see a second verdict.
+    _say_json_follows()
     json.dump(summary, sys.stdout, indent=2, sort_keys=True)
     sys.stdout.write("\n")
 

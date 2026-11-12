@@ -91,7 +91,8 @@ const SAMPLE_LIMIT = 8;
 // continuity); see verify.py. Kept byte-identical to the verify.py VERIFIER_VERSION.
 // 2.7.20 (2026-11-02): `--feed` reads a signed kanonik-trust-feed/v1 file: STALE, the copy's age, `--online`
 // differences, a feed checked against a disclosure; see verify.py. Kept byte-identical to the verify.py VERIFIER_VERSION.
-const VERIFIER_VERSION = "2.7.20";
+// 2.7.21 (2026-11-10): words only; see verify.py (which checks' text changed). Kept byte-identical to the verify.py VERIFIER_VERSION.
+const VERIFIER_VERSION = "2.7.21";
 const SAMPLE_KEY_NOTE = "signed with the Kanonik public sample key: synthetic data, not a customer record";
 // Amendment 9: new sampling files use the existing generic checksum check.
 // Packaging release number is not admission of Amendment 7 pack checks.
@@ -1705,91 +1706,91 @@ const GATED_WRITE_OUTCOME_CHECKED = new Set(["conformance.attested.v1"]);
 // BEGIN GENERATED LIFECYCLE POLICY
 const LIFECYCLE_VERDICT_POLICY = {
   "audit.finding.amended.v1": {
-    "reason": "Replacement graded content requires its own embedded verdict; a prior version cannot justify it.",
+    "reason": "A replacement version carries its own grade; the grade of an earlier version does not count.",
     "stance": "embedded"
   },
   "audit.session.finalized.v1": {
-    "reason": "Completeness check and signed-root reference; findings are graded separately.",
+    "reason": "A completeness check and a reference to the signed chain head; findings are graded on their own.",
     "stance": "exempt"
   },
   "audit.session.state_changed.v1": {
-    "reason": "Session lifecycle transition; no new finding or scope is graded.",
+    "reason": "The audit session moved to a new state; nothing new in it needs a grade.",
     "stance": "exempt"
   },
   "claim.review_needed.v1": {
-    "reason": "Automatic staleness marker; no new claim is sealed.",
+    "reason": "An automatic mark that a claim is out of date; no new claim is recorded.",
     "stance": "exempt"
   },
   "claim.superseded.v1": {
-    "reason": "Pointer to a replacement; the replacement seal carries its own checks.",
+    "reason": "It points to a replacement record; the replacement is checked on its own.",
     "stance": "exempt"
   },
   "control_test.superseded.v1": {
-    "reason": "Human evidence or test record replacement, like its initial capture; no model grade.",
+    "reason": "A person replaced an evidence or test record, as when it was first captured; it needs no AI grade.",
     "stance": "exempt"
   },
   "evidence.superseded.v1": {
-    "reason": "Human evidence or test record replacement, like its initial capture; no model grade.",
+    "reason": "A person replaced an evidence or test record, as when it was first captured; it needs no AI grade.",
     "stance": "exempt"
   },
   "framework.licence.attested.v1": {
-    "reason": "Human licence attestation; no model judgment of licensing rights.",
+    "reason": "A person confirmed the licence; no AI judges licensing rights.",
     "stance": "exempt"
   },
   "lens.applicability.decided.v1": {
-    "reason": "Deterministic record: gateway anchors the rule verdict against the canonical id before seal; no model verdict required.",
+    "reason": "Checked by a fixed rule before it was recorded, so it needs no AI grade.",
     "stance": "rule"
   },
   "lens.applicability.superseded.v1": {
-    "reason": "Pointer to a replacement; the replacement seal carries its own checks.",
+    "reason": "It points to a replacement record; the replacement is checked on its own.",
     "stance": "exempt"
   },
   "lens.decided.v1": {
-    "reason": "Deterministic record: gateway anchors the rule verdict against the canonical id before seal; no model verdict required.",
+    "reason": "Checked by a fixed rule before it was recorded, so it needs no AI grade.",
     "stance": "rule"
   },
   "lens.decision.superseded.v1": {
-    "reason": "Pointer to a replacement; the replacement seal carries its own checks.",
+    "reason": "It points to a replacement record; the replacement is checked on its own.",
     "stance": "exempt"
   },
   "link.retracted.v1": {
-    "reason": "A person withdraws a recorded link; it asserts nothing new, so no model grade is taken.",
+    "reason": "A person withdrew a recorded link; it states nothing new, so it needs no AI grade.",
     "stance": "exempt"
   },
   "migration.summary.recorded.v1": {
-    "reason": "Deterministic record: gateway anchors the rule verdict against the canonical id before seal; no model verdict required.",
+    "reason": "Checked by a fixed rule before it was recorded, so it needs no AI grade.",
     "stance": "rule"
   },
   "migration.summary.superseded.v1": {
-    "reason": "Pointer to a replacement; the replacement seal carries its own checks.",
+    "reason": "It points to a replacement record; the replacement is checked on its own.",
     "stance": "exempt"
   },
   "obligation.recorded.v1": {
-    "reason": "Deterministic record: gateway anchors the rule verdict against the canonical id before seal; no model verdict required.",
+    "reason": "Checked by a fixed rule before it was recorded, so it needs no AI grade.",
     "stance": "rule"
   },
   "policy_acknowledgement.recorded.v1": {
-    "reason": "Deterministic record: gateway anchors the rule verdict against the canonical id before seal; no model verdict required.",
+    "reason": "Checked by a fixed rule before it was recorded, so it needs no AI grade.",
     "stance": "rule"
   },
   "obligation.superseded.v1": {
-    "reason": "Pointer to a replacement; the replacement seal carries its own checks.",
+    "reason": "It points to a replacement record; the replacement is checked on its own.",
     "stance": "exempt"
   },
   "package.created.v1": {
-    "reason": "Ungated derivation container; member seals carry their own grades.",
+    "reason": "It only groups other records; each record in the group has its own grade.",
     "stance": "exempt"
   },
   "questionnaire_response.superseded.v1": {
-    "reason": "Pointer to a replacement; the replacement seal carries its own checks.",
+    "reason": "It points to a replacement record; the replacement is checked on its own.",
     "stance": "exempt"
   },
   "soa_decision.revised.v1": {
-    "reason": "Replacement graded content requires its own embedded verdict; a prior version cannot justify it.",
+    "reason": "A replacement version carries its own grade; the grade of an earlier version does not count.",
     "stance": "embedded"
   },
   "sod_exception.recorded.v1": {
-    "reason": "Disclosure of the approval decision, not a new model-authored record.",
+    "reason": "It discloses an approval decision a person made; it is not a new record written by an AI.",
     "stance": "exempt"
   }
 };
@@ -2254,6 +2255,12 @@ function verdictFieldState(p) {
 }
 
 // lifecycle contract; mirrors _check_lifecycle_verdicts.
+/** An event type in words a person reads ("obligation.recorded.v1" -> "obligation recorded"), for the notes. */
+function kindWords(et) {
+  return String(et).replace(/\.v\d+$/, "").replace(/[._]+/g, " ")
+    .replace("sod exception", "separation-of-duties exception").replace("soa decision", "statement of applicability decision");
+}
+
 function checkLifecycleVerdicts(events, r) {
   const rules = new Map();
   const overrides = indexAnchoredOverrides(events);
@@ -2271,7 +2278,7 @@ function checkLifecycleVerdicts(events, r) {
     }
     if (!Object.hasOwn(LIFECYCLE_VERDICT_POLICY, et)) continue;
     const policy = LIFECYCLE_VERDICT_POLICY[et];
-    r.notes.push(`${et}: ${policy.stance} - ${policy.reason}`);
+    r.notes.push(`${kindWords(et)}: ${policy.reason}`);
     if (verdictFieldState(p) === "malformed") {
       fail("lifecycle_malformed_verdict", e, "a supplied lifecycle verdict must be an object with an outcome"); continue;
     }

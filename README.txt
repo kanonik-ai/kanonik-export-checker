@@ -25,9 +25,9 @@ This packaging release does not add the future signed-manifest/provenance
 checks. Bundles declaring a minimum checker requirement above 2.7.4 are refused
 until those checks ship; the toolkit release number alone does not admit them.
 
-## Verifier version shipped in this bundle: 2.7.20
+## Verifier version shipped in this bundle: 2.7.21
 
-The verifier in this bundle is version **2.7.20**. Several
+The verifier in this bundle is version **2.7.21**. Several
 capabilities have a minimum reading version:
 
 - A **single-record proof** (one sealed record a company handed you as a
@@ -116,6 +116,14 @@ capabilities have a minimum reading version:
   second person sealed) is checked from version **2.1.0**. An older 2.0.0 copy
   still verifies a two-act export - it simply does not run the extra oversight
   check that confirms the sealer was a different person than the accepter.
+
+- **Result words** (version **2.7.21**, words only; no check, no report field and no pass or
+  fail outcome changed, an older copy gives the same verdicts): the notes under
+  `verifier_verdict_presence` name each record kind in words and give a plain reason;
+  the printed result says once that the JSON's DEGRADED reads "Passed with notes", and a
+  signature that verified with notes, or could not be checked here, reads "not fully";
+  the cards of `chain_completeness`, `two_act_oversight` and `member_attestation` in
+  `verify.html` say what each check proves.
 
 Every earlier export, and every governance-kind or sole-admin case, verifies
 unchanged on the verifier it originally shipped with. This is additive format
@@ -328,7 +336,7 @@ Stdout: a JSON report you can pipe into your tools.
 ```json
 {
   "schema_version": "v1",
-  "verifier_version": "2.7.20",
+  "verifier_version": "2.7.21",
   "overall_status": "DEGRADED",
   "summary": {"PASS": 9, "FAIL": 0, "DEGRADED": 2},
   "checks": [{"check": "hash_chain_integrity", "status": "PASS", ...}, ...]
@@ -348,10 +356,10 @@ check names; the full run also prints the notes under each check).
 You can check this bundle without asking Kanonik. What you still rely on Kanonik for: the pinned signing keys, the withheld-entries list and the prompt registry in this checker.
 
 Bundle verification: Passed with notes
-Checker version: 2.7.20
+Checker version: 2.7.21
 Package code: 8220-88C6-0E1C
 Events checked: 517
-Signature verified: degraded
+Signature verified: not fully (read the notes below)
 Separation of duties: 6 author-sealed under policy; 6 sole-admin exceptions; 0 dual-controlled
 Replay details present: 199 AI decisions
 
@@ -370,6 +378,8 @@ Kanonik Auditor Export - offline verification
 [passed ] file_checksums  (138 items)
 
 Overall: Passed with notes  (9 passed, 2 with notes, 0 failed)
+
+The block below is the same result for programs. It says PASS, DEGRADED or FAIL: DEGRADED means Passed with notes.
 ```
 
 Here `chain_root_signature` carries a note because the signature verified against
@@ -385,7 +395,7 @@ the verification model:
 You can check this bundle without asking Kanonik. What you still rely on Kanonik for: the pinned signing keys, the withheld-entries list and the prompt registry in this checker.
 
 Bundle verification: Failed
-Checker version: 2.7.20
+Checker version: 2.7.21
 Package code: not shown (the seal did not verify)
 Events checked: 184
 Signature verified: no
