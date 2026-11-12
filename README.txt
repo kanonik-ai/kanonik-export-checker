@@ -25,9 +25,9 @@ This packaging release does not add the future signed-manifest/provenance
 checks. Bundles declaring a minimum checker requirement above 2.7.4 are refused
 until those checks ship; the toolkit release number alone does not admit them.
 
-## Verifier version shipped in this bundle: 2.7.21
+## Verifier version shipped in this bundle: 2.7.22
 
-The verifier in this bundle is version **2.7.21**. Several
+The verifier in this bundle is version **2.7.22**. Several
 capabilities have a minimum reading version:
 
 - A **single-record proof** (one sealed record a company handed you as a
@@ -124,6 +124,22 @@ capabilities have a minimum reading version:
   signature that verified with notes, or could not be checked here, reads "not fully";
   the cards of `chain_completeness`, `two_act_oversight` and `member_attestation` in
   `verify.html` say what each check proves.
+
+- **A refined record's verdict, found by what was graded** (version **2.7.22**): a control,
+  procedure or policy the AI re-proposed after the safety check's refinement loop is sealed
+  under ids that no longer match the id its standalone verdict names, so an older copy reads
+  it as sealed without a verdict (`committed_without_verdict`). From 2.7.22, when no id pairs
+  the record, the verdict is also matched on what the sealed commit itself records: the same
+  inputs hash, prompt content hash, model and rule pack (all four must be recorded and equal),
+  the same record kind, an earlier position in the chain than the commit, and an earlier
+  proposed draft of the same lineage. A verdict is used for one commit only, the earliest in the chain that matches it. Every verdict
+  found this way, and any verdict embedded in the commit, must support the write, so a
+  rejected one is never hidden by an approved one, and a commit that records no such evidence
+  is still reported as sealed without a verdict. The notes under `verifier_verdict_presence`
+  say how many records were paired this way. Two readings were made the same in all
+  three copies, as `verify.py` always read them and `verify.mjs` and `verify.html` did not: an
+  empty list or object in an approver field counts as no approver, and an override reason is
+  blank by the same whitespace rule. Nothing else changed.
 
 Every earlier export, and every governance-kind or sole-admin case, verifies
 unchanged on the verifier it originally shipped with. This is additive format
@@ -336,7 +352,7 @@ Stdout: a JSON report you can pipe into your tools.
 ```json
 {
   "schema_version": "v1",
-  "verifier_version": "2.7.21",
+  "verifier_version": "2.7.22",
   "overall_status": "DEGRADED",
   "summary": {"PASS": 9, "FAIL": 0, "DEGRADED": 2},
   "checks": [{"check": "hash_chain_integrity", "status": "PASS", ...}, ...]
@@ -356,7 +372,7 @@ check names; the full run also prints the notes under each check).
 You can check this bundle without asking Kanonik. What you still rely on Kanonik for: the pinned signing keys, the withheld-entries list and the prompt registry in this checker.
 
 Bundle verification: Passed with notes
-Checker version: 2.7.21
+Checker version: 2.7.22
 Package code: 8220-88C6-0E1C
 Events checked: 517
 Signature verified: not fully (read the notes below)
@@ -395,7 +411,7 @@ the verification model:
 You can check this bundle without asking Kanonik. What you still rely on Kanonik for: the pinned signing keys, the withheld-entries list and the prompt registry in this checker.
 
 Bundle verification: Failed
-Checker version: 2.7.21
+Checker version: 2.7.22
 Package code: not shown (the seal did not verify)
 Events checked: 184
 Signature verified: no

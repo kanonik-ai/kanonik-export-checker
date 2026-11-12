@@ -1,7 +1,7 @@
 cff-version: 1.2.0
 message: "If you rely on this checker in an audit or a contract, cite it as below and name the release and its archive identifier."
 title: "Kanonik export checker"
-version: "2.7.21"
+version: "2.7.22"
 license: MIT
 repository-code: "https://github.com/kanonik-ai/kanonik-export-checker"
 url: "https://kanonik.ai/checker/"

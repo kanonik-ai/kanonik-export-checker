@@ -92,7 +92,8 @@ const SAMPLE_LIMIT = 8;
 // 2.7.20 (2026-11-02): `--feed` reads a signed kanonik-trust-feed/v1 file: STALE, the copy's age, `--online`
 // differences, a feed checked against a disclosure; see verify.py. Kept byte-identical to the verify.py VERIFIER_VERSION.
 // 2.7.21 (2026-11-10): words only; see verify.py (which checks' text changed). Kept byte-identical to the verify.py VERIFIER_VERSION.
-const VERIFIER_VERSION = "2.7.21";
+// 2.7.22 (2026-11-12): graded-content pairing of a refined record's verdict; see verify.py.
+const VERIFIER_VERSION = "2.7.22";
 const SAMPLE_KEY_NOTE = "signed with the Kanonik public sample key: synthetic data, not a customer record";
 // Amendment 9: new sampling files use the existing generic checksum check.
 // Packaging release number is not admission of Amendment 7 pack checks.
@@ -2147,8 +2148,14 @@ function checkChainCompleteness(events, chainRoot, sessionMode = false) {
 // A committed *.committed.v1 event only exists after the approval gate
 // consumed a single-use token, so an approver subject / approval jti is proof
 // a human decided. Mirrors verify.py _committed_has_approver.
+// Truthy the way Python reads it (an empty list or object is empty), so py and js read an approver alike.
+function pyTruthy(v) {
+  if (Array.isArray(v)) return v.length > 0;
+  if (v && typeof v === "object") return Object.keys(v).length > 0;
+  return Boolean(v);
+}
 function committedHasApprover(p) {
-  return Boolean(p.approved_by_subject || p.approved_by || p.approval_jti);
+  return pyTruthy(p.approved_by_subject) || pyTruthy(p.approved_by) || pyTruthy(p.approval_jti);
 }
 
 // A REJECTED verdict stands only with a SEPARATE approval.override.recorded.v1
@@ -2176,9 +2183,17 @@ function indexAnchoredOverrides(events) {
   return { index, firstSeq };
 }
 
+// Python's str.strip() whitespace set; JavaScript's trim() differs on some characters (U+0085, U+FEFF).
+const PY_WHITESPACE = "\t\n\v\f\r\x1c\x1d\x1e\x1f \x85\xa0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000";
+function pyStrip(s) {
+  let i = 0, j = s.length;
+  while (i < j && PY_WHITESPACE.includes(s[i])) i++;
+  while (j > i && PY_WHITESPACE.includes(s[j - 1])) j--;
+  return s.slice(i, j);
+}
 function committedApprover(p) {
-  const a = p.approved_by_subject || p.approved_by || "";
-  return typeof a === "string" ? a.trim() : "";
+  const a = pyTruthy(p.approved_by_subject) ? p.approved_by_subject : (pyTruthy(p.approved_by) ? p.approved_by : "");
+  return typeof a === "string" ? pyStrip(a) : "";
 }
 
 // A committed event with no approver is never matched. Mirrors verify.py
@@ -2190,7 +2205,7 @@ function committedHasOverride(c, p, overrides) {
   for (const { seq: s, p: ov } of overrides.index.get(String(c.event_id || "")) || []) {
     if (s <= committedSeq) continue;
     if (typeof ov.approver_subject !== "string" || ov.approver_subject !== approver) continue;
-    if (typeof ov.reason !== "string" || !ov.reason.trim()) continue;
+    if (typeof ov.reason !== "string" || !pyStrip(ov.reason)) continue;
     return true;
   }
   return false;
@@ -2203,7 +2218,7 @@ function committedHasOverride(c, p, overrides) {
 // (or the chain has none). Mirrors verify.py _historical_inline_override.
 function historicalInlineOverride(c, p, overrides) {
   if (p.override_acknowledged !== true) return false;
-  if (typeof p.override_reason !== "string" || !p.override_reason.trim()) return false;
+  if (typeof p.override_reason !== "string" || !pyStrip(p.override_reason)) return false;
   if (!committedApprover(p)) return false;
   if ((overrides.index.get(String(c.event_id || "")) || []).length) return false;
   if (overrides.firstSeq !== null && seq(c) > overrides.firstSeq) return false;
@@ -2294,6 +2309,66 @@ function checkLifecycleVerdicts(events, r) {
   }
 }
 
+// 2.7.22: graded-content pairing. Mirrors verify.py _graded_content_outcomes. A record the AI
+// re-proposed after the safety check's refinement loop is sealed with entity_id = the refinement id and
+// payload.proposal_id = a batch member id, while the standalone verdict names the new draft's canonical id.
+// The sealed commit_provenance.verifier carries the graded tuple, so the verdict is found by that content,
+// for the always-graded kinds only.
+const GRADED_CONTENT_PAIRING_KINDS = new Map([
+  ["internal_control.committed.v1", "internal_control"],
+  ["procedure.committed.v1", "procedure"],
+  ["policy.committed.v1", "policy"],
+]);
+// Exact: no trimming, so py and js read an identifier the same way (their trims differ on some characters).
+function gText(v) { return typeof v === "string" ? v : ""; }
+function gEventSeq(e) {
+  const [state, canon] = canonicalInt(e.sequence_number);
+  return state === "ok" ? Number(canon) : null;
+}
+const GRADED_OUTCOME_WORD = /^[A-Za-z_]+$/;
+// The outcome word of a verdict read by graded content. Only a plain ASCII word counts (anything else
+// reads as no outcome, which never satisfies), so py and js cannot read it two ways.
+function gradedOutcome(source, key) {
+  const o = source[key];
+  if (o !== undefined && o !== null && o !== "") return typeof o === "string" && GRADED_OUTCOME_WORD.test(o) ? o : "";
+  return source.passed === true ? "APPROVED" : (key === "outcome" ? "" : "REJECTED");
+}
+function gradedContentOutcomes(c, p, verdictsByCih, proposedById, taken, anchors) {
+  const kind = GRADED_CONTENT_PAIRING_KINDS.get(String(c.event_type));
+  const prov = p.commit_provenance;
+  if (!kind || !prov || typeof prov !== "object" || Array.isArray(prov)) return [[], false];
+  const ver = prov.verifier;
+  if (!ver || typeof ver !== "object" || Array.isArray(ver)) return [[], false];
+  const lineage = gText(p.lineage_key);
+  const cih = gText(ver.canonical_inputs_hash);
+  const prompt = gText(ver.prompt_content_hash);
+  const model = gText(ver.model);
+  const rulePack = gText(ver.rule_pack_hash);
+  const cseq = gEventSeq(c);
+  if (!lineage || gText(prov.lineage_key) !== lineage || !cih || !prompt || !model || !rulePack || cseq === null) return [[], false];
+  const outcomes = [];
+  const used = [];
+  for (const [vseq, vp] of verdictsByCih.get(cih) || []) {
+    if (vseq >= cseq || gText(vp.prompt_hash) !== prompt) continue;
+    if (gText(vp.related_entity_type) !== kind) continue;
+    if (gText(vp.model_id) !== model || gText(vp.rule_pack_hash) !== rulePack) continue;
+    const rpid = gText(vp.related_proposal_id);
+    if (!rpid) continue;
+    if (!(proposedById.get(rpid) || []).some(([pseq, ptype, plineage]) => ptype === `${kind}.proposed.v1` && pseq < vseq && plineage === lineage)) continue;
+    const outcome = gradedOutcome(vp, "llm_tier_outcome");
+    // A verdict one commit used, or one an id already pairs to a commit that needs a verdict, is
+    // that commit's: it cannot serve this one. A verdict that does NOT support a write still counts
+    // against it, whoever else used it, so it can never be hidden.
+    const spent = taken.has(vseq) || (anchors.get(rpid) || []).some(([t]) => !COMMITTED_VERDICT_EXEMPT.has(t));
+    if (spent && outcomeSatisfies(outcome, true, false)) continue;
+    outcomes.push(outcome);
+    if (!spent) used.push(vseq);
+  }
+  for (const u of used) taken.add(u);
+  // own = at least one matching verdict was free for this commit. A spent rejection only counts against a write.
+  return [outcomes, used.length > 0];
+}
+
 function checkVerdictPresence(events) {
   const r = { check: "verifier_verdict_presence", status: "PASS", count: 0, notes: [], anomalies: [] };
   checkLifecycleVerdicts(events, r);
@@ -2352,6 +2427,29 @@ function checkVerdictPresence(events) {
     const rpid = vp.related_proposal_id;
     if (rpid) (idx[String(rpid)] = idx[String(rpid)] || []).push(standaloneOutcome(vp));
   }
+  // Indexes for the graded-content fallback (2.7.22).
+  const verdictsByCih = new Map();
+  for (const v of verdicts) {
+    const vseq = gEventSeq(v);
+    const vp = decodePayload(v);
+    const vcih = gText(vp.canonical_inputs_hash);
+    if (vseq !== null && vcih) {
+      if (!verdictsByCih.has(vcih)) verdictsByCih.set(vcih, []);
+      verdictsByCih.get(vcih).push([vseq, vp]);
+    }
+  }
+  const proposedById = new Map();
+  for (const e of events) {
+    if (!String(e.event_type || "").endsWith(".proposed.v1")) continue;
+    const pseq = gEventSeq(e);
+    if (pseq === null) continue;
+    const pp = decodePayload(e);
+    for (const pid of new Set([gText(pp.canonical_id), gText(pp.proposal_id)])) {
+      if (!pid) continue;
+      if (!proposedById.has(pid)) proposedById.set(pid, []);
+      proposedById.get(pid).push([pseq, String(e.event_type), gText(pp.lineage_key)]);
+    }
+  }
   const overrides = indexAnchoredOverrides(events);
   const degrade = (c, message, extra) => {
     // A kind that gained its verdict field only later carries none: legitimate
@@ -2361,7 +2459,44 @@ function checkVerdictPresence(events) {
   };
   let embeddedOk = 0;
   let standaloneOk = 0;
-  for (const c of committed) {
+  let gradedOk = 0;
+  const gradedTaken = new Set();
+  const committedAnchors = new Map();
+  // A verdict is also consumed by any other event that names its draft by entity_id (the lifecycle rule
+  // verdicts), so those spend it too.
+  for (const ev of events) {
+    const et = String(ev.event_type);
+    if (et === "verifier.verdict.v1" || et.endsWith(".proposed.v1") || COMMITTED.has(et) || COMMITTED_VERDICT_EXEMPT.has(et) || !ev.entity_id) continue;
+    let key;
+    try { key = String(ev.entity_id); } catch { continue; }
+    if (!committedAnchors.has(key)) committedAnchors.set(key, []);
+    committedAnchors.get(key).push([et, gEventSeq(ev)]);
+  }
+  for (const cc of committed) {
+    const cp = decodePayload(cc);
+    if (COMMITTED_VERDICT_EXEMPT.has(cc.event_type) || !cp || typeof cp !== "object" || Array.isArray(cp)) continue; // an exempt event cannot consume a verdict; only a mapping holds ids
+    for (const a of [cp.proposal_id, cp.upstream_proposal_id, cc.entity_id]) {
+      if (!a) continue; // every id the id pairing reads (it stringifies), so a verdict it consumed is spent
+      let key;
+      try { key = String(a); } catch { continue; } // an object whose toString throws pairs nothing
+      if (!committedAnchors.has(key)) committedAnchors.set(key, []);
+      committedAnchors.get(key).push([String(cc.event_type), gEventSeq(cc)]);
+    }
+  }
+  // Claim graded-content verdicts in chain order for every commit, whichever way it is later accepted
+  // (id pairing, embedded verdict or this fallback), so one verdict never serves two commits and the
+  // outcome does not depend on the order of the file. Mirrors verify.py.
+  const gradedByEvent = new Map();
+  const claimOrder = committed.map((c, i) => [c, i]).sort((x, y) => {
+    const a = gEventSeq(x[0]), b = gEventSeq(y[0]);
+    if ((a === null) !== (b === null)) return a === null ? 1 : -1;
+    return (a === null ? 0 : a - b) || x[1] - y[1];
+  });
+  for (const [c, i] of claimOrder) {
+    const gp = decodePayload(c);
+    if (GRADED_CONTENT_PAIRING_KINDS.has(c.event_type) && gp && typeof gp === "object" && !Array.isArray(gp)) gradedByEvent.set(i, gradedContentOutcomes(c, gp, verdictsByCih, proposedById, gradedTaken, committedAnchors));
+  }
+  for (const [ci, c] of committed.entries()) {
     const et = c.event_type;
     const p = decodePayload(c);
 
@@ -2417,6 +2552,21 @@ function checkVerdictPresence(events) {
       // A policy's in-record verdict never hides a contradicting standalone one.
       const polOutcomes = [p.proposal_id, p.upstream_proposal_id, c.entity_id].filter(Boolean).map(String).flatMap((a) => idx[a] || []);
       if (polOutcomes.length && !polOutcomes.some((o) => outcomeSatisfies(o, hasApprover, hasOverride))) embedded = null;
+      // A rejected verdict found by graded content (2.7.22) is never hidden by the in-record verdict:
+      // every one allocated to this commit must support the write, else the commit fails here.
+      const polGraded = embedded && typeof embedded === "object" ? (gradedByEvent.get(ci) || [[], false])[0] : [];
+      if (polGraded.length && !polGraded.every((o) => outcomeSatisfies(o, hasApprover, hasOverride))) {
+        const polFailing = polGraded.filter((o) => !outcomeSatisfies(o, hasApprover, hasOverride));
+        const polEmbeddedOutcome = embedded.outcome ? String(embedded.outcome) : (embedded.passed === true ? "APPROVED" : "");
+        if (rejectedOnly([...polFailing, polEmbeddedOutcome]) && historicalInlineOverride(c, p, overrides)) {
+          if (r.status !== "FAIL") r.status = "DEGRADED";
+          r.anomalies.push({ kind: "committed_override_unanchored_historical", event_id: c.event_id, event_type: et, message: HISTORICAL_OVERRIDE_MESSAGE });
+          continue;
+        }
+        r.status = "FAIL";
+        r.anomalies.push({ kind: "committed_with_rejected_verdict_only", event_id: c.event_id, event_type: et, outcomes: [...new Set(polGraded)].sort(), message: "a verdict graded on exactly what this commit sealed did not support the write, and no human approver or override recorded on the chain justifies it; the verdict inside the record does not hide it" });
+        continue;
+      }
     }
     if (embedded && typeof embedded === "object") {
       const outcome = embedded.outcome ? String(embedded.outcome) : (embedded.passed === true ? "APPROVED" : "");
@@ -2446,7 +2596,17 @@ function checkVerdictPresence(events) {
       }
       continue;
     }
-    const outcomes = anchorIds.flatMap((a) => idx[a] || []);
+    let outcomes = anchorIds.flatMap((a) => idx[a] || []);
+    // Only when the ids pair nothing: find the verdict by what was graded (2.7.22). Every verdict found
+    // this way must support the write, so a rejected one is never hidden by an approved one.
+    let graded = false;
+    if (!outcomes.length && !historical) {
+      const [gOutcomes, gOwn] = gradedByEvent.get(ci) || [[], false];
+      outcomes = gOwn ? [...gOutcomes] : [];
+      graded = outcomes.length > 0;
+      const embG = p.verifier_verdict;
+      if (graded && embG && typeof embG === "object") outcomes.push(gradedOutcome(embG, "outcome"));
+    }
     if (!outcomes.length) {
       if (historical) {
         degrade(c, "carries no anchored Verifier verdict. Provenance uncertain: this kind's verdict field is still schema-OPTIONAL, so this tool cannot determine whether this record predates the verdict field or is a policy-violating modern omission - reported DEGRADED, not failed, to avoid failing a legitimate historical export. The write is not independently attestable; strict failure of a modern omission requires the schema to make the field required", { anchor_ids: anchorIds });
@@ -2456,7 +2616,7 @@ function checkVerdictPresence(events) {
       }
       continue;
     }
-    if (!outcomes.some((o) => outcomeSatisfies(o, hasApprover, hasOverride))) {
+    if (!(graded ? outcomes.every : outcomes.some).call(outcomes, (o) => outcomeSatisfies(o, hasApprover, hasOverride))) {
       if (rejectedOnly(outcomes) && historicalInlineOverride(c, p, overrides)) {
         if (r.status !== "FAIL") r.status = "DEGRADED";
         r.anomalies.push({ kind: "committed_override_unanchored_historical", event_id: c.event_id, event_type: et, proposal_id: anchorIds[0], message: HISTORICAL_OVERRIDE_MESSAGE });
@@ -2466,9 +2626,11 @@ function checkVerdictPresence(events) {
       r.anomalies.push({ kind: "committed_with_rejected_verdict_only", event_id: c.event_id, event_type: et, outcomes: [...new Set(outcomes)], message: "the Verifier rejected this proposal and no human approver or override recorded on the chain justifies the write" });
       continue;
     }
+    if (graded) { gradedOk++; continue; }
     standaloneOk++;
   }
   if (embeddedOk || standaloneOk) r.notes.push(`${embeddedOk} committed events carried an approving verdict EMBEDDED in the event; ${standaloneOk} paired an approving standalone verifier.verdict.v1`);
+  if (gradedOk) r.notes.push(`${gradedOk} committed event${gradedOk === 1 ? "" : "s"} paired to ${gradedOk === 1 ? "its" : "their"} verifier verdict by graded content: the record was refined after grading, so its ids no longer meet the verdict's, and the verdict was matched on the inputs, prompt, model and rule pack the sealed commit records and on the record's lineage`);
   const unanchored = r.anomalies.filter((a) => a.kind === "committed_override_unanchored_historical").length;
   if (unanchored) r.notes.push(`LIMITATION: ${unanchored} record${unanchored === 1 ? "" : "s"} sealed over a rejected Verifier verdict carry only an override flag inside the record and no override event on the chain (sealed before overrides were chain-anchored); reported DEGRADED, not accepted as proof.`);
   const historicalAbsent = r.anomalies.filter((a) => a.kind === "committed_without_verdict_historical").length;

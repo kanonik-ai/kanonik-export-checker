@@ -4,7 +4,7 @@ Algorithm:     ECDSA P-384 with SHA-384
 Key id:        chain-root:v1@vault
 SHA-256 of the public key (DER SubjectPublicKeyInfo):
   4037e409f864b8149b9f5d021122e1fd2bea3bbec1504a1e2716ba1411c5df1d
-Checker:       version 2.7.21, from product release v0.1.79
+Checker:       version 2.7.22, from product source commit fce7005297
 
 Every production Auditor Export's chain root is signed with this key. The checker in this folder pins it.
 The same key is listed at https://kanonik.ai/.well-known/kanonik-chain-root-keys.json.

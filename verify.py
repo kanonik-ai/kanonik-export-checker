@@ -301,7 +301,12 @@ SAMPLE_KEY_NOTE = "signed with the Kanonik public sample key: synthetic data, no
 # says once that the JSON's DEGRADED is "Passed with notes" and prints a signature that verified with notes, or could not
 # be checked here, as "not fully (read the notes below)"; verify.html also words the cards of chain_completeness,
 # two_act_oversight and member_attestation to match what each check proves. No check, no JSON field and no outcome changed.
-VERIFIER_VERSION = "2.7.21"
+# 2.7.22 (2026-11-12): a record the AI re-proposed after the safety check's refinement loop is paired to its standalone
+# verdict by the graded content its sealed commit_provenance records (inputs hash, prompt, model, rule pack, lineage and
+# the earlier proposed draft), for the control, procedure and policy kinds, when no id pairs it. A chain sealed
+# that way read FAILED on 2.7.21 (committed_without_verdict). A rejected verdict is never hidden by an approved one, and
+# nothing else loosened.
+VERIFIER_VERSION = "2.7.22"
 # A packaging-only bump must not claim the unimplemented Amendment 7 checks.
 MAX_SUPPORTED_BUNDLE_REQUIREMENT = "2.7.4"
 
@@ -2128,6 +2133,109 @@ def _check_lifecycle_verdicts(events: list[dict[str, Any]], result: CheckResult)
                                 "the record requires a preceding passing rule verdict for its canonical id")
 
 
+# 2.7.22: graded-content pairing. A record the AI re-proposed after the safety check's refinement loop is
+# sealed with entity_id = the refinement id and payload.proposal_id = a batch member id, while the standalone verdict
+# names the new draft's canonical id, so none of the three ids above meets it. The sealed commit_provenance.verifier
+# carries the graded tuple, so the verdict is found by that content, for the always-graded kinds only.
+GRADED_CONTENT_PAIRING_KINDS = {
+    "internal_control.committed.v1": "internal_control",
+    "procedure.committed.v1": "procedure",
+    "policy.committed.v1": "policy",
+}
+
+
+def _text(value: Any) -> str:
+    # Exact: no trimming, so py and js read an identifier the same way (their trims differ on some characters).
+    return value if isinstance(value, str) else ""
+
+
+def _graded_seq(ev: dict[str, Any]) -> Optional[int]:
+    state, canon = _canonical_int(ev.get("sequence_number"))
+    return int(canon) if state == "ok" and canon is not None else None
+
+
+_GRADED_OUTCOME_WORD = re.compile(r"[A-Za-z_]+")
+
+
+def _graded_outcome(source: dict[str, Any], key: str) -> str:
+    """The outcome word of a verdict read by graded content. Only a plain ASCII word counts (anything
+    else reads as no outcome, which never satisfies), so py and js cannot read it two ways."""
+    o = source.get(key)
+    if o is not None and o != "":
+        return o if isinstance(o, str) and _GRADED_OUTCOME_WORD.fullmatch(o) else ""
+    return "APPROVED" if source.get("passed") is True else ("" if key == "outcome" else "REJECTED")
+
+
+def _graded_content_outcomes(
+    c: dict[str, Any],
+    payload: dict[str, Any],
+    verdicts_by_cih: dict[str, list[tuple[int, dict[str, Any]]]],
+    proposed_by_id: dict[str, list[tuple[int, str, str]]],
+    taken: set[int],
+    anchors: dict[str, list[tuple[str, Optional[int]]]],
+) -> tuple[list[str], bool]:
+    """Outcomes of the standalone verdicts that were graded on exactly what this commit sealed.
+
+    Every test must hold, else the list is empty and the caller keeps failing closed: the commit
+    records a lineage key (twice, equal), a canonical inputs hash, a prompt content hash, a model and
+    a rule pack hash; the verdict has the same four values, the committed record's kind, an earlier
+    position in the chain than the commit, and names a proposed event of that kind, earlier than the
+    verdict, whose canonical id (or proposal id) it is and whose lineage key is the commit's. A
+    verdict an id already pairs to a committed record, or one an earlier commit of the chain already
+    matched, is not used again. The caller claims in chain order, for every commit, whichever way it
+    is later accepted, so a verdict never serves two commits."""
+    kind = GRADED_CONTENT_PAIRING_KINDS.get(str(c.get("event_type")))
+    prov = payload.get("commit_provenance")
+    if kind is None or not isinstance(prov, dict):
+        return [], False
+    ver = prov.get("verifier")
+    if not isinstance(ver, dict):
+        return [], False
+    lineage = _text(payload.get("lineage_key"))
+    cih = _text(ver.get("canonical_inputs_hash"))
+    prompt = _text(ver.get("prompt_content_hash"))
+    model = _text(ver.get("model"))
+    rule_pack = _text(ver.get("rule_pack_hash"))
+    cseq = _graded_seq(c)
+    if (
+        not lineage or _text(prov.get("lineage_key")) != lineage
+        or not cih or not prompt or not model or not rule_pack or cseq is None
+    ):
+        return [], False
+    outcomes: list[str] = []
+    used: list[int] = []
+    for vseq, vp in verdicts_by_cih.get(cih, []):
+        if vseq >= cseq or _text(vp.get("prompt_hash")) != prompt:
+            continue
+        if _text(vp.get("related_entity_type")) != kind:
+            continue
+        if _text(vp.get("model_id")) != model or _text(vp.get("rule_pack_hash")) != rule_pack:
+            continue
+        rpid = _text(vp.get("related_proposal_id"))
+        if not rpid:
+            continue
+        if not any(
+            ptype == f"{kind}.proposed.v1" and pseq < vseq and plineage == lineage
+            for pseq, ptype, plineage in proposed_by_id.get(rpid, [])
+        ):
+            continue
+        outcome = _graded_outcome(vp, "llm_tier_outcome")
+        # A verdict one commit used, or one an id already pairs to a commit that needs a verdict, is
+        # that commit's: it cannot serve this one. A verdict that does NOT support a write still counts
+        # against it, whoever else used it, so it can never be hidden.
+        spent = vseq in taken or any(
+            t not in COMMITTED_VERDICT_EXEMPT for t, _s in anchors.get(rpid, [])
+        )
+        if spent and _outcome_satisfies(outcome, has_approver=True, has_override=False):
+            continue
+        outcomes.append(outcome)
+        if not spent:
+            used.append(vseq)
+    taken.update(used)
+    # own = at least one matching verdict was free for this commit. A spent rejection only counts against a write.
+    return outcomes, bool(used)
+
+
 def check_verifier_verdict_presence(events: list[dict[str, Any]]) -> CheckResult:
     """For every *.committed.v1 event, assert a Verifier verdict (embedded in
     the event, or a standalone verifier.verdict.v1 paired to it) exists and
@@ -2265,13 +2373,64 @@ def check_verifier_verdict_presence(events: list[dict[str, Any]]) -> CheckResult
                 _standalone_verdict_outcome(payload)
             )
 
+    # Indexes for the graded-content fallback (2.7.22).
+    verdicts_by_cih: dict[str, list[tuple[int, dict[str, Any]]]] = {}
+    for v in verdicts:
+        vseq = _graded_seq(v)
+        vcih = _text(_payload(v).get("canonical_inputs_hash"))
+        if vseq is not None and vcih:
+            verdicts_by_cih.setdefault(vcih, []).append((vseq, _payload(v)))
+    proposed_by_id: dict[str, list[tuple[int, str, str]]] = {}
+    for p in proposed:
+        pseq = _graded_seq(p)
+        pp = _payload(p)
+        if pseq is None:
+            continue
+        for pid in {_text(pp.get("canonical_id")), _text(pp.get("proposal_id"))} - {""}:
+            proposed_by_id.setdefault(pid, []).append(
+                (pseq, str(p.get("event_type")), _text(pp.get("lineage_key")))
+            )
+
     # For each committed event, look for a matching verdict via the
     # canonical entity_id ↔ proposal_id pairing OR via the payload's
     # approval_jti (which threads through approval.issued.v1 and the
     # verdict's related_proposal_id when available).
     embedded_ok = 0
     standalone_ok = 0
+    graded_ok = 0
+    graded_taken: set[int] = set()
+    committed_anchors: dict[str, list[tuple[str, Optional[int]]]] = {}
+    # A verdict is also consumed by any other event that names its draft by entity_id (the lifecycle rule
+    # verdicts), so those spend it too.
+    for ev in events:
+        _et = str(ev.get("event_type"))
+        if (
+            _et == "verifier.verdict.v1" or _et.endswith(".proposed.v1") or _et in COMMITTED_EVENT_TYPES
+            or _et in COMMITTED_VERDICT_EXEMPT or not ev.get("entity_id")
+        ):
+            continue
+        committed_anchors.setdefault(str(ev.get("entity_id")), []).append((_et, _graded_seq(ev)))
     for c in committed:
+        _pl = _payload(c)
+        if c.get("event_type") in COMMITTED_VERDICT_EXEMPT or not isinstance(_pl, dict):
+            continue  # an exempt event cannot consume a verdict; only a mapping holds ids
+        for a in (_pl.get("proposal_id"), _pl.get("upstream_proposal_id"), c.get("entity_id")):
+            if a:  # every id the id pairing reads (it stringifies), so a verdict it consumed is spent
+                committed_anchors.setdefault(str(a), []).append((str(c.get("event_type")), _graded_seq(c)))
+    # Claim graded-content verdicts in chain order for every commit, whichever way it is later accepted
+    # (id pairing, embedded verdict or this fallback), so one verdict never serves two commits and the
+    # outcome does not depend on the order of the file.
+    graded_by_event: dict[int, tuple[list[str], bool]] = {}
+    for ci in sorted(
+        range(len(committed)),
+        key=lambda i: (_graded_seq(committed[i]) is None, _graded_seq(committed[i]) or 0),
+    ):
+        c = committed[ci]
+        if c.get("event_type") in GRADED_CONTENT_PAIRING_KINDS and isinstance(_payload(c), dict):
+            graded_by_event[ci] = _graded_content_outcomes(
+                c, _payload(c), verdicts_by_cih, proposed_by_id, graded_taken, committed_anchors
+            )
+    for ci, c in enumerate(committed):
         et = c.get("event_type")
         payload = _payload(c)
 
@@ -2384,6 +2543,40 @@ def check_verifier_verdict_presence(events: list[dict[str, Any]]) -> CheckResult
                 for o in _pol_outcomes
             ):
                 embedded = None
+            # A rejected verdict found by graded content (2.7.22) is never hidden by the in-record verdict:
+            # every one allocated to this commit must support the write, else the commit fails here.
+            _pol_graded = graded_by_event.get(ci, ([], False))[0] if embedded is not None else []
+            if _pol_graded and not all(
+                _outcome_satisfies(
+                    o,
+                    has_approver=_committed_has_approver(payload),
+                    has_override=_committed_has_override(c, payload, overrides),
+                )
+                for o in _pol_graded
+            ):
+                _pol_failing = [
+                    o for o in _pol_graded
+                    if not _outcome_satisfies(
+                        o,
+                        has_approver=_committed_has_approver(payload),
+                        has_override=_committed_has_override(c, payload, overrides),
+                    )
+                ]
+                if _rejected_only(
+                    _pol_failing + [_embedded_verdict_outcome(embedded)]
+                ) and _historical_inline_override(c, payload, overrides, first_override_seq):
+                    _degrade_historical_override(result, c)
+                    continue
+                _fail_committed(
+                    result,
+                    "committed_with_rejected_verdict_only",
+                    c,
+                    "a verdict graded on exactly what this commit sealed did not support the write, and no human "
+                    "approver or override recorded on the chain justifies it; the verdict inside the record does "
+                    "not hide it",
+                    outcomes=sorted(set(_pol_graded)),
+                )
+                continue
         if embedded is not None:
             if not _outcome_satisfies(
                 _embedded_verdict_outcome(embedded),
@@ -2459,6 +2652,16 @@ def check_verifier_verdict_presence(events: list[dict[str, Any]]) -> CheckResult
         outcomes: list[str] = []
         for a in anchor_ids:
             outcomes.extend(verdict_index.get(a, []))
+        # Only when the ids pair nothing: find the verdict by what was graded (2.7.22). Every verdict
+        # found this way must support the write, so a rejected one is never hidden by an approved one.
+        graded = False
+        if not outcomes and not historical:
+            _g_outcomes, _g_own = graded_by_event.get(ci, ([], False))
+            outcomes = list(_g_outcomes) if _g_own else []
+            graded = bool(outcomes)
+            embedded_graded = _embedded_verdict(payload)
+            if graded and embedded_graded is not None:
+                outcomes.append(_graded_outcome(embedded_graded, "outcome"))
         if not outcomes:
             if historical:
                 _degrade_committed(
@@ -2488,7 +2691,8 @@ def check_verifier_verdict_presence(events: list[dict[str, Any]]) -> CheckResult
             continue
         has_approver = _committed_has_approver(payload)
         has_override = _committed_has_override(c, payload, overrides)
-        if not any(
+        _quantifier = all if graded else any
+        if not _quantifier(
             _outcome_satisfies(
                 o, has_approver=has_approver, has_override=has_override
             )
@@ -2511,6 +2715,9 @@ def check_verifier_verdict_presence(events: list[dict[str, Any]]) -> CheckResult
                 outcomes=sorted(set(outcomes)),
             )
             continue
+        if graded:
+            graded_ok += 1
+            continue
         standalone_ok += 1
 
     # Say which mechanism carried the proof, so an auditor reading the report
@@ -2520,6 +2727,13 @@ def check_verifier_verdict_presence(events: list[dict[str, Any]]) -> CheckResult
             f"{embedded_ok} committed events carried an approving verdict "
             f"EMBEDDED in the event; {standalone_ok} paired an approving "
             f"standalone verifier.verdict.v1"
+        )
+    if graded_ok:
+        result.notes.append(
+            f"{graded_ok} committed event{'' if graded_ok == 1 else 's'} paired to "
+            f"{'its' if graded_ok == 1 else 'their'} verifier verdict by graded content: the record was "
+            f"refined after grading, so its ids no longer meet the verdict's, and the verdict was matched "
+            f"on the inputs, prompt, model and rule pack the sealed commit records and on the record's lineage"
         )
     unanchored = sum(
         1 for a in result.anomalies
