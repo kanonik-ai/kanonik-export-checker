@@ -25,9 +25,9 @@ This packaging release does not add the future signed-manifest/provenance
 checks. Bundles declaring a minimum checker requirement above 2.7.4 are refused
 until those checks ship; the toolkit release number alone does not admit them.
 
-## Verifier version shipped in this bundle: 2.7.22
+## Verifier version shipped in this bundle: 2.7.23
 
-The verifier in this bundle is version **2.7.22**. Several
+The verifier in this bundle is version **2.7.23**. Several
 capabilities have a minimum reading version:
 
 - A **single-record proof** (one sealed record a company handed you as a
@@ -124,6 +124,12 @@ capabilities have a minimum reading version:
   signature that verified with notes, or could not be checked here, reads "not fully";
   the cards of `chain_completeness`, `two_act_oversight` and `member_attestation` in
   `verify.html` say what each check proves.
+
+- **Revoked keys stay revoked** (version **2.7.23**): a key that the key file shipped with the checker
+  lists under `revoked_keys` fails every signature it made, and it still does after `--online`
+  merges the published key file, whichever way that file lists it. `verify.py`, `verify.mjs` and
+  `verify.html` agree on this. A published key file that is served but is not JSON is reported as
+  rejected, not unreachable, and the page and `verify.mjs` read at most 64 KiB of a disclosure's status answer, as `verify.py` does.
 
 - **A refined record's verdict, found by what was graded** (version **2.7.22**): a control,
   procedure or policy the AI re-proposed after the safety check's refinement loop is sealed
@@ -352,7 +358,7 @@ Stdout: a JSON report you can pipe into your tools.
 ```json
 {
   "schema_version": "v1",
-  "verifier_version": "2.7.22",
+  "verifier_version": "2.7.23",
   "overall_status": "DEGRADED",
   "summary": {"PASS": 9, "FAIL": 0, "DEGRADED": 2},
   "checks": [{"check": "hash_chain_integrity", "status": "PASS", ...}, ...]
@@ -372,7 +378,7 @@ check names; the full run also prints the notes under each check).
 You can check this bundle without asking Kanonik. What you still rely on Kanonik for: the pinned signing keys, the withheld-entries list and the prompt registry in this checker.
 
 Bundle verification: Passed with notes
-Checker version: 2.7.22
+Checker version: 2.7.23
 Package code: 8220-88C6-0E1C
 Events checked: 517
 Signature verified: not fully (read the notes below)
@@ -411,7 +417,7 @@ the verification model:
 You can check this bundle without asking Kanonik. What you still rely on Kanonik for: the pinned signing keys, the withheld-entries list and the prompt registry in this checker.
 
 Bundle verification: Failed
-Checker version: 2.7.22
+Checker version: 2.7.23
 Package code: not shown (the seal did not verify)
 Events checked: 184
 Signature verified: no

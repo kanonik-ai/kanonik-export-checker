@@ -93,7 +93,8 @@ const SAMPLE_LIMIT = 8;
 // differences, a feed checked against a disclosure; see verify.py. Kept byte-identical to the verify.py VERIFIER_VERSION.
 // 2.7.21 (2026-11-10): words only; see verify.py (which checks' text changed). Kept byte-identical to the verify.py VERIFIER_VERSION.
 // 2.7.22 (2026-11-12): graded-content pairing of a refined record's verdict; see verify.py.
-const VERIFIER_VERSION = "2.7.22";
+// 2.7.23 (2026-11-16): pinned revoked keys stay revoked after the online merge; the status read is limited; see verify.py.
+const VERIFIER_VERSION = "2.7.23";
 const SAMPLE_KEY_NOTE = "signed with the Kanonik public sample key: synthetic data, not a customer record";
 // Amendment 9: new sampling files use the existing generic checksum check.
 // Packaging release number is not admission of Amendment 7 pack checks.
@@ -377,6 +378,9 @@ function pemToDer(pem) {
 // mirrored from trusted_keys.json (the auditorexport parity test guards drift).
 // The signature is verified against THESE, never the key the bundle ships.
 // env=production -> PASS; env=dev -> DEGRADED (not production-attested).
+// SHIPPED_REVOKED_KEYS: the `revoked_keys` of trusted_keys.json (entries {sha256_spki_der}), the keys this checker was
+// shipped knowing are revoked. Applied to the keys above and again after every online merge, as verify.py does (the same parity test).
+export const SHIPPED_REVOKED_KEYS = [];
 const DEFAULT_TRUSTED_KEYS = [
   {
     "signing_key_id": "chain-root:v1@vault",
@@ -406,6 +410,30 @@ const DEFAULT_TRUSTED_KEYS = [
     "pem": "-----BEGIN PUBLIC KEY-----\nMHYwEAYHKoZIzj0CAQYFK4EEACIDYgAEuCibNIPNWVpJhXkG/obwIJbfood2ITdU\nuaKKdminUNxMkYqxY1bt3/3qVV7cyOXZsViP9Z5ZTUsRFm+mDVMVGIi9PlqtUPJx\n4uVrJzXw8vALKJMS1Moq7CXNQ74ZeOhs\n-----END PUBLIC KEY-----\n"
   }
 ];
+
+// The pinned keys with the shipped revocations applied: what every check starts from.
+const shippedRevokedDoc = () => ({ revoked_keys: SHIPPED_REVOKED_KEYS });
+
+// withShippedRevocations applies the shipped revocations to a combined key list, by the fingerprint each key really
+// has (derived from its PEM, never the one an entry claims), so a key the shipped file revokes stays revoked whether
+// it came from the built-in list or was added as an extra trusted key. With nothing revoked the list is returned as
+// it came.
+async function withShippedRevocations(keys) {
+  const doc = shippedRevokedDoc();
+  if (!revokedSpkis(doc).length) return keys;
+  const normalised = [];
+  for (const k of keys) {
+    const e = await keyEntry(k, keyStatus(k.status));
+    if (e) normalised.push(e);
+  }
+  return consolidateKeys(applyRevoked(normalised, doc));
+}
+
+// trustedKeysFor is the pinned key list every check starts from: the built-in keys and opts.trustedKeys, with the
+// shipped revocations applied to all of them.
+export async function trustedKeysFor(opts = {}) {
+  return withShippedRevocations([...DEFAULT_TRUSTED_KEYS, ...(opts.trustedKeys || [])]);
+}
 
 // Chain-root payload versions (Amendment 17). "v3" has the fields and the tenant-event-count meaning of
 // "v2" plus the signed claim that the package carrying the root is sealed. Mirrors verify.py.
@@ -687,7 +715,7 @@ function checkRecordCurrency(proof) {
 // same summary shape verify.py --record prints on stdout.
 export async function verifyRecordProof(proof, opts = {}) {
   if (!proof || typeof proof !== "object") throw new Error("the proof file is not a JSON object");
-  const trustedKeys = [...DEFAULT_TRUSTED_KEYS, ...(opts.trustedKeys || [])];
+  const trustedKeys = await trustedKeysFor(opts);
   const results = [
     checkRecordSchema(proof),
     await checkRecordEventHash(proof),
@@ -873,13 +901,15 @@ export const MIN_KEY_FILE_SIGNED_AT = "2026-10-24T00:00:00Z";
 //  rejected: anything else, an unsigned file or a v1 file included. Takes nothing: an unsigned file is exactly what
 //    a tampered www deploy would serve (a tampered web deploy adding a trusted key).
 // The pinned set always wins: nothing here removes a pinned key or changes its public key.
-export async function mergeKeyFile(pinnedIn, doc, minSignedAt = "") {
+export async function mergeKeyFile(pinnedIn, doc, minSignedAt = "", revokedDocs = [shippedRevokedDoc()]) {
   const pinnedRaw = [];
   for (const k of pinnedIn) {
     const e = await keyEntry(k, keyStatus(k.status));
     if (e) pinnedRaw.push(e);
   }
-  const pinned = await consolidateKeys(pinnedRaw);
+  // What the pinned files revoke is applied before the file is read, so a revoked key cannot sign a key file in.
+  let pinned = await consolidateKeys(pinnedRaw);
+  for (const pinnedDoc of revokedDocs) pinned = applyRevoked(pinned, pinnedDoc);
   if (!isObj(doc) || (hasOwn(doc, "keys") && !Array.isArray(doc.keys))) return { keys: pinned, mode: "rejected", note: "the online key file is not a key file" };
   if (doc.schema !== KEY_FILE_SCHEMA_V2) {
     if (doc.schema === KEY_FILE_SCHEMA_V1 || doc.schema === undefined || doc.schema === null) return { keys: pinned, mode: "rejected", note: "the online key file is not signed (no v2 schema): nothing was taken from it" };
@@ -905,7 +935,10 @@ export async function mergeKeyFile(pinnedIn, doc, minSignedAt = "") {
     out.push(entry);
     bySpki.set(entry.sha256_spki_der, entry);
   }
-  return { keys: await consolidateKeys(applyRevoked(out, doc)), mode: "continuity", note: "" };
+  // What the pinned files revoke is applied again: an online file that lists such a key as active changes nothing.
+  let result = applyRevoked(out, doc);
+  for (const pinnedDoc of revokedDocs) result = applyRevoked(result, pinnedDoc);
+  return { keys: await consolidateKeys(result), mode: "continuity", note: "" };
 }
 
 // Only https://kanonik.ai or https://share.kanonik.ai, default port, no credentials, the public status path and
@@ -922,6 +955,34 @@ export function disclosureStatusUrlAllowed(url) {
     u.search === "" && u.hash === "" && DISCLOSURE_STATUS_PATH.test(u.pathname) && !/[?#]/.test(url) && url.indexOf("//" + u.hostname + "/") === url.indexOf("//");
 }
 
+// The most of a status answer this checker reads; verify.py reads 64 KiB too. Anything larger is not read.
+const DISCLOSURE_STATUS_MAX_BYTES = 65536;
+
+// readCappedText reads a response body as text, at most `max` bytes; null when it is larger.
+async function readCappedText(resp, max) {
+  const reader = resp.body && typeof resp.body.getReader === "function" ? resp.body.getReader() : null;
+  if (!reader) {
+    const t = await resp.text();
+    return new TextEncoder().encode(t).length > max ? null : t;
+  }
+  const parts = [];
+  let n = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    n += value.length;
+    if (n > max) {
+      try { await reader.cancel(); } catch { /* the body is dropped either way */ }
+      return null;
+    }
+    parts.push(value);
+  }
+  const all = new Uint8Array(n);
+  let o = 0;
+  for (const p of parts) { all.set(p, o); o += p.length; }
+  return new TextDecoder().decode(all);
+}
+
 // fetchDisclosureStatus reads the public status endpoint; null on a disallowed address or any failure (the report
 // then says the status is unknown).
 export async function fetchDisclosureStatus(url, fetchImpl = globalThis.fetch) {
@@ -929,7 +990,8 @@ export async function fetchDisclosureStatus(url, fetchImpl = globalThis.fetch) {
   try {
     const resp = await fetchImpl(url, { headers: { Accept: "application/json" }, credentials: "omit", redirect: "error" });
     if (!resp.ok) return null;
-    return JSON.parse(await resp.text());
+    const text = await readCappedText(resp, DISCLOSURE_STATUS_MAX_BYTES);
+    return text === null ? null : JSON.parse(text);
   } catch {
     return null;
   }
@@ -1074,7 +1136,7 @@ function pyRepr(v) {
 // response}}.
 export async function verifyDisclosure(doc, opts = {}) {
   const trustedKeys = [];
-  for (const k of opts.pinned || [...DEFAULT_TRUSTED_KEYS, ...(opts.trustedKeys || [])]) {
+  for (const k of opts.pinned || (await trustedKeysFor(opts))) {
     const e = await keyEntry(k, keyStatus(k.status));
     if (e) trustedKeys.push(e);
   }
@@ -1419,7 +1481,7 @@ export function feedListsManifest(feed, digest) {
 // {state, doc} from fetchLiveFeed, disclosure (a parsed disclosure file), disclosureGiven}.
 export async function verifyFeed(doc, opts = {}) {
   const trustedKeys = [];
-  for (const k of opts.pinned || [...DEFAULT_TRUSTED_KEYS, ...(opts.trustedKeys || [])]) {
+  for (const k of opts.pinned || (await trustedKeysFor(opts))) {
     const e = await keyEntry(k, keyStatus(k.status));
     if (e) trustedKeys.push(e);
   }
@@ -3766,7 +3828,7 @@ export async function verifyBundle(input, opts = {}) {
   const pemBytes = files.get(machine + "public_key.pem");
   const pem = pemBytes ? dec.decode(pemBytes) : null;
   const registry = readJson(files, machine + "chain/verifier_prompt_registry.json");
-  const trustedKeys = [...DEFAULT_TRUSTED_KEYS, ...(opts.trustedKeys || [])];
+  const trustedKeys = await trustedKeysFor(opts);
 
   const results = [];
   const sessionDoc = readJson(files, machine + "session_checkpoints.json");

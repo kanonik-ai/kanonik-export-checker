@@ -306,7 +306,11 @@ SAMPLE_KEY_NOTE = "signed with the Kanonik public sample key: synthetic data, no
 # the earlier proposed draft), for the control, procedure and policy kinds, when no id pairs it. A chain sealed
 # that way read FAILED on 2.7.21 (committed_without_verdict). A rejected verdict is never hidden by an approved one, and
 # nothing else loosened.
-VERIFIER_VERSION = "2.7.22"
+# 2.7.23 (2026-11-16): a key the pinned key files revoke stays revoked after the online key file is merged (verify.py
+# applied them before the merge only, and verify.mjs and verify.html did not read the shipped revoked list at all); an
+# online key file that is served but is not JSON is reported rejected, not unreachable; the disclosure status read is
+# limited to 64 KiB in verify.mjs and verify.html as it is in verify.py. No check, no JSON field and no outcome changed.
+VERIFIER_VERSION = "2.7.23"
 # A packaging-only bump must not claim the unimplemented Amendment 7 checks.
 MAX_SUPPORTED_BUNDLE_REQUIREMENT = "2.7.4"
 
@@ -1240,16 +1244,21 @@ def load_trusted_keys_report(
 
     report = {"state": "not_requested", "note": ""}
     if online:
+        raw = b""
         try:
             with _urlopen_no_redirect(urllib.request.Request(WELL_KNOWN_KEYS_URL)) as resp:
                 raw = resp.read(KEY_FILE_MAX_BYTES + 1)
             if len(raw) > KEY_FILE_MAX_BYTES:
                 raise ValueError("the key file is larger than this checker reads")
-            fetched = json.loads(raw.decode("utf-8"))
         except Exception as e:  # noqa: BLE001
             report = {"state": "unreachable", "note": f"the online key file could not be read ({type(e).__name__}): key revocations were NOT checked; only the keys pinned in this checker were used"}
         else:
-            merged, mode, note = merge_key_file(_consolidate_keys(keys), fetched, floor)
+            try:
+                fetched = json.loads(raw.decode("utf-8"))
+            except Exception:  # noqa: BLE001
+                # It was served but it is not a key file: that is a file refused, not a connection that failed.
+                fetched = None
+            merged, mode, note = merge_key_file(_consolidate_keys(keys), fetched, floor, revoked_docs)
             if mode == "continuity":
                 keys[:] = merged
                 report = {"state": "used", "note": "the online key file is signed by a pinned Kanonik key and was applied"}
@@ -5141,7 +5150,7 @@ def _apply_revoked(keys: list[dict[str, Any]], doc: Any) -> list[dict[str, Any]]
     return [dict(k, status="revoked") if k.get("sha256_spki_der") in gone else k for k in keys]
 
 
-def merge_key_file(pinned: list[dict[str, Any]], doc: Any, min_signed_at: str = "") -> tuple[list[dict[str, Any]], str, str]:
+def merge_key_file(pinned: list[dict[str, Any]], doc: Any, min_signed_at: str = "", revoked_docs: Optional[list[Any]] = None) -> tuple[list[dict[str, Any]], str, str]:
     """Merge a key file fetched from the well-known address into the pinned set. Returns (keys, mode, note).
 
     mode "continuity": a v2 file with a valid continuity signature signed no earlier than `min_signed_at` (the floor
@@ -5150,8 +5159,13 @@ def merge_key_file(pinned: list[dict[str, Any]], doc: Any, min_signed_at: str = 
         `revoked_keys`); it can never move one back.
     mode "rejected": anything else, an unsigned file or a v1 file included. Nothing is taken from it: an unsigned
         file is exactly what a tampered www deploy would serve (a tampered web deploy adding a trusted key).
-    The pinned set always wins: nothing here removes a pinned key or changes its public key."""
+    The pinned set always wins: nothing here removes a pinned key or changes its public key. `revoked_docs` are the
+    pinned files (the shipped key file, an override) whose `revoked_keys` apply again after the merge, so a key they
+    revoke stays revoked even when the online file lists it as active."""
     pinned = _consolidate_keys([e for e in (_key_entry(k, status=_key_status(k.get("status"))) for k in pinned) if e is not None])
+    # What the pinned files revoke is applied before the file is read, so a revoked key cannot sign a key file in.
+    for pinned_doc in revoked_docs or []:
+        pinned = _apply_revoked(pinned, pinned_doc)
     if not isinstance(doc, dict) or not isinstance(doc.get("keys", []), list):
         return list(pinned), "rejected", "the online key file is not a key file"
     schema = doc.get("schema")
@@ -5183,7 +5197,10 @@ def merge_key_file(pinned: list[dict[str, Any]], doc: Any, min_signed_at: str = 
             continue
         out.append(entry)
         by_spki[entry["sha256_spki_der"]] = entry
-    return _consolidate_keys(_apply_revoked(out, doc)), "continuity", ""
+    out = _apply_revoked(out, doc)
+    for pinned_doc in revoked_docs or []:
+        out = _apply_revoked(out, pinned_doc)
+    return _consolidate_keys(out), "continuity", ""
 
 
 def disclosure_status_url_allowed(url: Any) -> bool:
