@@ -22,12 +22,13 @@ The bundle root also contains `README.txt` (where to start) and `records.csv`
 (a sampling index of sealed versions and approvals). Both are covered by the
 manifest file checksums. Older bundles without these files still verify.
 This packaging release does not add the future signed-manifest/provenance
-checks. Bundles declaring a minimum checker requirement above 2.7.4 are refused
-until those checks ship; the toolkit release number alone does not admit them.
+checks. A bundle may declare a minimum checker version up to this checker's own
+version; a newer minimum, and 2.8.0 (kept for those future checks), is refused
+with the checker version the bundle needs.
 
-## Verifier version shipped in this bundle: 2.7.23
+## Verifier version shipped in this bundle: 2.7.24
 
-The verifier in this bundle is version **2.7.23**. Several
+The verifier in this bundle is version **2.7.24**. Several
 capabilities have a minimum reading version:
 
 - A **single-record proof** (one sealed record a company handed you as a
@@ -124,6 +125,12 @@ capabilities have a minimum reading version:
   signature that verified with notes, or could not be checked here, reads "not fully";
   the cards of `chain_completeness`, `two_act_oversight` and `member_attestation` in
   `verify.html` say what each check proves.
+
+- **A bundle may name the checker it needs** (version **2.7.24**): a package whose
+  `MANIFEST.json` states `min_verifier_version` up to this checker's version is checked as usual;
+  until 2.7.24 every checker refused any minimum above 2.7.4. A package that needs a newer checker
+  fails `file_checksums` with the version it needs, for example a package holding trust page
+  events needs 2.7.24 or later. `verify.py`, `verify.mjs` and `verify.html` agree on this.
 
 - **Revoked keys stay revoked** (version **2.7.23**): a key that the key file shipped with the checker
   lists under `revoked_keys` fails every signature it made, and it still does after `--online`
@@ -358,7 +365,7 @@ Stdout: a JSON report you can pipe into your tools.
 ```json
 {
   "schema_version": "v1",
-  "verifier_version": "2.7.23",
+  "verifier_version": "2.7.24",
   "overall_status": "DEGRADED",
   "summary": {"PASS": 9, "FAIL": 0, "DEGRADED": 2},
   "checks": [{"check": "hash_chain_integrity", "status": "PASS", ...}, ...]
@@ -378,7 +385,7 @@ check names; the full run also prints the notes under each check).
 You can check this bundle without asking Kanonik. What you still rely on Kanonik for: the pinned signing keys, the withheld-entries list and the prompt registry in this checker.
 
 Bundle verification: Passed with notes
-Checker version: 2.7.23
+Checker version: 2.7.24
 Package code: 8220-88C6-0E1C
 Events checked: 517
 Signature verified: not fully (read the notes below)
@@ -417,7 +424,7 @@ the verification model:
 You can check this bundle without asking Kanonik. What you still rely on Kanonik for: the pinned signing keys, the withheld-entries list and the prompt registry in this checker.
 
 Bundle verification: Failed
-Checker version: 2.7.23
+Checker version: 2.7.24
 Package code: not shown (the seal did not verify)
 Events checked: 184
 Signature verified: no

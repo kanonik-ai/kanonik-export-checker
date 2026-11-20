@@ -77,7 +77,7 @@ All of them must give the same value. If one differs, do not rely on the result,
 - `production-key.txt`, `SHA256SUMS`: the key and the file sums.
 - `PERMANENCE.md`, `CITATION.cff`: where the permanent archive copy is and how to cite it.
 
-Checker version 2.7.23, from Kanonik product source commit 926c040905. The eight checker files are byte for byte the ones in that commit.
+Checker version 2.7.24, from Kanonik product source commit a9784b8180. The eight checker files are byte for byte the ones in that commit.
 
 ## Licence
 

@@ -94,11 +94,13 @@ const SAMPLE_LIMIT = 8;
 // 2.7.21 (2026-11-10): words only; see verify.py (which checks' text changed). Kept byte-identical to the verify.py VERIFIER_VERSION.
 // 2.7.22 (2026-11-12): graded-content pairing of a refined record's verdict; see verify.py.
 // 2.7.23 (2026-11-16): pinned revoked keys stay revoked after the online merge; the status read is limited; see verify.py.
-const VERIFIER_VERSION = "2.7.23";
+// 2.7.24 (2026-11-17): a bundle may require any checker up to this one (the ceiling was 2.7.4); 2.8.0 is still
+// refused, and the refusal names the checker the bundle needs; see verify.py.
+const VERIFIER_VERSION = "2.7.24";
 const SAMPLE_KEY_NOTE = "signed with the Kanonik public sample key: synthetic data, not a customer record";
 // Amendment 9: new sampling files use the existing generic checksum check.
-// Packaging release number is not admission of Amendment 7 pack checks.
-const MAX_SUPPORTED_BUNDLE_REQUIREMENT = "2.7.4";
+// A bundle may require any check this toolkit has, never a v2 pack check (2.8.0 is reserved).
+const MAX_SUPPORTED_BUNDLE_REQUIREMENT = VERIFIER_VERSION;
 
 function concatBytes(chunks) {
   let n = 0;
@@ -3695,7 +3697,11 @@ async function checkFileChecksums(files, manifest, sealBytes, manifestBytes, roo
       (typeof minimum !== "string" || !/^[0-9]+\.[0-9]+\.[0-9]+$/.test(minimum) ||
        versionGreater(minimum, MAX_SUPPORTED_BUNDLE_REQUIREMENT))) {
     r.status = "FAIL";
-    r.anomalies.push({ kind: "bundle_requirement_unsupported", message: "This bundle requires checks not supported by this toolkit. Ask for a compatible checker." });
+    const named = typeof minimum === "string" && /^[0-9]+\.[0-9]+\.[0-9]+$/.test(minimum);
+    const message = named
+      ? `This bundle needs checker ${minimum} or later; this is ${VERIFIER_VERSION}. Get the current checker from kanonik.ai/verify.`
+      : "This bundle requires checks not supported by this toolkit. Ask for a compatible checker.";
+    r.anomalies.push({ kind: "bundle_requirement_unsupported", message });
     return r;
   }
   const sums = manifest.file_checksums || {};

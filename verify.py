@@ -310,9 +310,14 @@ SAMPLE_KEY_NOTE = "signed with the Kanonik public sample key: synthetic data, no
 # applied them before the merge only, and verify.mjs and verify.html did not read the shipped revoked list at all); an
 # online key file that is served but is not JSON is reported rejected, not unreachable; the disclosure status read is
 # limited to 64 KiB in verify.mjs and verify.html as it is in verify.py. No check, no JSON field and no outcome changed.
-VERIFIER_VERSION = "2.7.23"
-# A packaging-only bump must not claim the unimplemented Amendment 7 checks.
-MAX_SUPPORTED_BUNDLE_REQUIREMENT = "2.7.4"
+# 2.7.24 (2026-11-17): a bundle may require any checker up to this one. Until now every toolkit refused a bundle
+# minimum above 2.7.4, so an export holding trust page events (classified since 2.7.17) could not say it needs 2.7.17
+# or later. The ceiling is now the toolkit's own version, which stays below 2.8.0, the version reserved for the
+# Amendment 7 v2 pack checks, so a v2 pack is still refused. A refusal names the checker the bundle needs. No check,
+# no JSON field and no outcome changed for a bundle that states no minimum.
+VERIFIER_VERSION = "2.7.24"
+# A bundle may require any check this toolkit has, never a v2 pack check (2.8.0 is reserved, TestVerifierVersionReservation).
+MAX_SUPPORTED_BUNDLE_REQUIREMENT = VERIFIER_VERSION
 
 
 # ---------------------------------------------------------------------------
@@ -4465,9 +4470,13 @@ def check_file_checksums(
         or _version_tuple(minimum) > _version_tuple(MAX_SUPPORTED_BUNDLE_REQUIREMENT)
     ):
         result.status = "FAIL"
+        message = "This bundle requires checks not supported by this toolkit. Ask for a compatible checker."
+        if isinstance(minimum, str) and re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", minimum) is not None:
+            message = (f"This bundle needs checker {minimum} or later; this is {VERIFIER_VERSION}. "
+                       "Get the current checker from kanonik.ai/verify.")
         result.anomalies.append({
             "kind": "bundle_requirement_unsupported",
-            "message": "This bundle requires checks not supported by this toolkit. Ask for a compatible checker.",
+            "message": message,
         })
         return result
     checksums = manifest.get("file_checksums", {}) or {}
